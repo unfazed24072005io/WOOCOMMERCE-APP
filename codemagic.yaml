@@ -2,7 +2,7 @@ workflows:
   apk:
     name: Build APK
     environment:
-      node: 18
+      node: 20
     scripts:
       - name: Install dependencies
         script: npm install
