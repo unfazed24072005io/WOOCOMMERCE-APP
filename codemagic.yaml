@@ -3,6 +3,8 @@ workflows:
     name: Build APK
     environment:
       node: 18
+      groups:
+        - expo_credentials
     scripts:
       - npm install
       - npm install -g eas-cli
