@@ -1,0 +1,155 @@
+workflows:
+  react-native-android:
+    name: React Native Android
+    max_build_duration: 60
+    environment:
+      node: 18
+      npm: 9
+    scripts:
+      - name: Install dependencies
+        script: npm install
+      
+      - name: Install Expo CLI
+        script: npm install -g expo-cli eas-cli
+      
+      - name: Install EAS CLI
+        script: npm install -g eas-cli
+      
+      - name: Setup Expo
+        script: eas build:configure --non-interactive
+      
+      - name: Build Android APK
+        script: |
+          eas build --platform android \
+            --profile preview \
+            --non-interactive \
+            --no-wait
+      
+      - name: Generate APK path
+        script: |
+          echo "Build completed"
+      
+    artifacts:
+      - build-*.apk
+      - /tmp/expo-*.apk
+      - android/app/build/outputs/**/*.apk
+      - ios/build/Build/Products/*.ipa
+    
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
+
+  react-native-ios:
+    name: React Native iOS
+    max_build_duration: 60
+    environment:
+      node: 18
+      npm: 9
+      xcode: latest
+    scripts:
+      - name: Install dependencies
+        script: npm install
+      
+      - name: Install Expo CLI
+        script: npm install -g expo-cli eas-cli
+      
+      - name: Install EAS CLI
+        script: npm install -g eas-cli
+      
+      - name: Build iOS
+        script: |
+          eas build --platform ios \
+            --profile preview \
+            --non-interactive \
+            --no-wait
+      
+    artifacts:
+      - ios/build/Build/Products/*.ipa
+      - build-*.ipa
+    
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
+
+  react-native-android-apk:
+    name: Build Android APK Direct
+    max_build_duration: 60
+    environment:
+      node: 18
+      npm: 9
+      android_sdk: 33
+    scripts:
+      - name: Install dependencies
+        script: npm install
+      
+      - name: Install Expo
+        script: npm install -g expo-cli
+      
+      - name: Install EAS CLI
+        script: npm install -g eas-cli
+      
+      - name: Login to Expo (use environment variables)
+        script: |
+          eas login --non-interactive \
+            --username $EXPO_USERNAME \
+            --password $EXPO_PASSWORD
+      
+      - name: Build Android APK
+        script: |
+          eas build --platform android \
+            --profile preview \
+            --non-interactive \
+            --wait
+      
+    artifacts:
+      - build-*.apk
+      - *.apk
+      - android/app/build/outputs/apk/**/*.apk
+      - /tmp/expo-*.apk
+    
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
+      slack:
+        channel: '#builds'
+        notify_on_build_start: true
+        notify:
+          success: true
+          failure: true
+
+  web-build:
+    name: Web Build
+    max_build_duration: 30
+    environment:
+      node: 18
+      npm: 9
+    scripts:
+      - name: Install dependencies
+        script: npm install
+      
+      - name: Install Expo
+        script: npm install -g expo-cli
+      
+      - name: Build for web
+        script: |
+          npx expo export:web
+      
+    artifacts:
+      - web-build/**/*
+    
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
