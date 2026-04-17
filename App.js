@@ -103,51 +103,59 @@ const HomeScreen = ({ navigation }) => {
     }, []);
 
     return (
-      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY }], width: '50%' }}>
+  <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY }], width: '50%' }}>
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={() => navigation.navigate('ProductDetail', { product: { ...item, price: parseFloat(item.price) } })}
+      style={styles.productCard}
+    >
+      <View style={styles.productImageContainer}>
+        <Image source={{ uri: item.images?.[0]?.src }} style={styles.productImage} />
+        {item.sale_price && (
+          <View style={styles.saleTag}>
+            <Text style={styles.saleTagText}>SALE</Text>
+          </View>
+        )}
         <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={() => navigation.navigate('ProductDetail', { product: item })}
-          style={styles.productCard}
+          style={styles.wishlistButton}
+          onPress={() => isInWishlist(item.id) ? removeFromWishlist(item.id) : addToWishlist(item)}
         >
-          <View style={styles.productImageContainer}>
-            <Image source={{ uri: item.images?.[0]?.src }} style={styles.productImage} />
-            {item.sale_price && (
-              <View style={styles.saleTag}>
-                <Text style={styles.saleTagText}>SALE</Text>
-              </View>
-            )}
-            <TouchableOpacity
-              style={styles.wishlistButton}
-              onPress={() => isInWishlist(item.id) ? removeFromWishlist(item.id) : addToWishlist(item)}
-            >
-              <Ionicons name={isInWishlist(item.id) ? 'heart' : 'heart-outline'} size={22} color={isInWishlist(item.id) ? '#ff4444' : '#fff'} />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.productInfo}>
-            <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
-            <View style={styles.priceContainer}>
-              <Text style={styles.productPrice}>₹{item.price}</Text>
-              {item.regular_price && item.regular_price !== item.price && (
-                <Text style={styles.originalPrice}>₹{item.regular_price}</Text>
-              )}
-            </View>
-            <View style={styles.productFooter}>
-              <View style={styles.ratingContainer}>
-                <Ionicons name="star" size={14} color="#FFB800" />
-                <Text style={styles.ratingText}>{item.average_rating || '4.5'}</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={() => { addToCart(item); Vibration.vibrate(50); }}
-              >
-                <Ionicons name="cart-outline" size={18} color="#fff" />
-                <Text style={styles.addButtonText}>Add</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <Ionicons name={isInWishlist(item.id) ? 'heart' : 'heart-outline'} size={22} color={isInWishlist(item.id) ? '#ff4444' : '#fff'} />
         </TouchableOpacity>
-      </Animated.View>
-    );
+      </View>
+      <View style={styles.productInfo}>
+        <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+        <View style={styles.priceContainer}>
+          <Text style={styles.productPrice}>₹{item.price}</Text>
+          {item.regular_price && item.regular_price !== item.price && (
+            <Text style={styles.originalPrice}>₹{item.regular_price}</Text>
+          )}
+        </View>
+        <View style={styles.productFooter}>
+          <View style={styles.ratingContainer}>
+            <Ionicons name="star" size={14} color="#FFB800" />
+            <Text style={styles.ratingText}>{item.average_rating || '4.5'}</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => { 
+              // FIX: Parse price when adding to cart
+              const productWithParsedPrice = { 
+                ...item, 
+                price: parseFloat(item.price) 
+              };
+              addToCart(productWithParsedPrice); 
+              Vibration.vibrate(50); 
+            }}
+          >
+            <Ionicons name="cart-outline" size={18} color="#fff" />
+            <Text style={styles.addButtonText}>Add</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </TouchableOpacity>
+  </Animated.View>
+);
   };
 
   const CategoryItem = ({ cat }) => {
@@ -373,19 +381,6 @@ const ProductDetailScreen = ({ route, navigation }) => {
             }}>
               🛒 Add to Cart
             </button>
-            <button onClick={() => navigation.navigate('Cart')} style={{ 
-              flex: 1, 
-              backgroundColor: '#4CAF50', 
-              color: 'white', 
-              padding: '15px', 
-              borderRadius: '12px', 
-              border: 'none', 
-              fontSize: '16px', 
-              fontWeight: 'bold', 
-              cursor: 'pointer' 
-            }}>
-              Buy Now
-            </button>
           </div>
 
           <hr style={{ marginVertical: '20px' }} />
@@ -491,9 +486,7 @@ const ProductDetailScreen = ({ route, navigation }) => {
               <Ionicons name="cart-outline" size={24} color="#fff" />
               <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>Add to Cart</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={{ flex: 1, backgroundColor: '#4CAF50', justifyContent: 'center', alignItems: 'center', paddingVertical: 15, borderRadius: 12 }} onPress={() => navigation.navigate('Cart')}>
-              <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>Buy Now</Text>
-            </TouchableOpacity>
+            
           </View>
 
           <View style={{ height: 1, backgroundColor: '#f0f0f0', marginVertical: 20 }} />
@@ -631,345 +624,365 @@ const WishlistScreen = ({ navigation }) => {
   );
 };
 
-// ========== CHECKOUT SCREEN ==========
+// ========== CHECKOUT SCREEN (ULTRA COMPACT) ==========
 const CheckoutScreen = ({ navigation }) => {
   const { getTotal, clearCart, cart } = useContext(CartContext);
   const [formData, setFormData] = useState({
     name: '', email: '', phone: '', address: '', city: '', pincode: '', paymentMethod: 'COD'
   });
+  const [loading, setLoading] = useState(false);
 
-  const handlePlaceOrder = () => {
+  // Calculate totals correctly with parsed prices
+  const subtotal = cart.reduce((sum, item) => {
+    const price = parseFloat(item.price) || 0;
+    const qty = item.quantity || 1;
+    return sum + (price * qty);
+  }, 0);
+  const shipping = 50;
+  const total = subtotal + shipping;
+
+  const handlePlaceOrder = async () => {
     if (!formData.name || !formData.email || !formData.phone || !formData.address) {
       Alert.alert('Error', 'Please fill all required fields');
       return;
     }
-    Alert.alert(
-      'Order Placed! 🎉',
-      `Thank you for your order!\n\nTotal: ₹${getTotal()}\nOrder ID: #ORD${Date.now()}`,
-      [{ text: 'OK', onPress: () => { clearCart(); navigation.navigate('Home'); } }]
-    );
+
+    if (cart.length === 0) {
+      Alert.alert('Error', 'Your cart is empty');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const orderData = {
+        payment_method: formData.paymentMethod === 'COD' ? 'cod' : 'bacs',
+        payment_method_title: formData.paymentMethod,
+        set_paid: formData.paymentMethod !== 'COD',
+        billing: {
+          first_name: formData.name.split(' ')[0] || '',
+          last_name: formData.name.split(' ').slice(1).join(' ') || '',
+          address_1: formData.address,
+          city: formData.city || 'Unknown',
+          postcode: formData.pincode || '',
+          country: 'IN',
+          email: formData.email,
+          phone: formData.phone
+        },
+        shipping: {
+          first_name: formData.name.split(' ')[0] || '',
+          last_name: formData.name.split(' ').slice(1).join(' ') || '',
+          address_1: formData.address,
+          city: formData.city || 'Unknown',
+          postcode: formData.pincode || '',
+          country: 'IN'
+        },
+        line_items: cart.map(item => ({
+          product_id: item.id,
+          quantity: item.quantity || 1
+        })),
+        shipping_lines: [{
+          method_id: 'flat_rate',
+          method_title: 'Flat Rate',
+          total: '50.00'
+        }]
+      };
+
+      const url = `${API_URL}/orders?consumer_key=${CONSUMER_KEY}&consumer_secret=${CONSUMER_SECRET}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderData)
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.id) {
+        Alert.alert(
+          '✅ Order Placed!',
+          `Order #${result.id}\nTotal: ₹${total.toFixed(2)}`,
+          [{ text: 'OK', onPress: () => { clearCart(); navigation.navigate('Home'); } }]
+        );
+      } else {
+        Alert.alert('Order Failed', result.message || 'Something went wrong');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // FOR WEB - Use native HTML elements
-  if (Platform.OS === 'web') {
+  // FOR MOBILE - ULTRA COMPACT
+  if (Platform.OS !== 'web') {
     return (
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f8f8f8' }}>
-        {/* Header */}
-        <div style={{ 
-          padding: '15px',
-          borderBottom: '1px solid #e0e0e0',
-          display: 'flex',
-          alignItems: 'center',
-          backgroundColor: 'white',
-          position: 'sticky',
-          top: 0,
-          zIndex: 10
+      <View style={{ flex: 1, backgroundColor: '#f8f8f8' }}>
+        {/* Header - Compact */}
+        <View style={{ 
+          flexDirection: 'row', 
+          alignItems: 'center', 
+          paddingHorizontal: 12, 
+          paddingTop: Platform.OS === 'ios' ? 50 : 12, 
+          paddingBottom: 12, 
+          backgroundColor: '#fff', 
+          borderBottomWidth: 1, 
+          borderBottomColor: '#f0f0f0'
         }}>
-          <button onClick={() => navigation.goBack()} style={{ 
-            background: 'none', 
-            border: 'none', 
-            fontSize: '24px', 
-            cursor: 'pointer',
-            padding: '8px'
-          }}>←</button>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', flex: 1, textAlign: 'center' }}>Checkout</div>
-          <div style={{ width: '40px' }}></div>
-        </div>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ width: 35, height: 35, borderRadius: 18, backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center' }}>
+            <Ionicons name="arrow-back" size={20} color="#333" />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#333', flex: 1, textAlign: 'center' }}>Checkout</Text>
+          <View style={{ width: 35 }} />
+        </View>
 
-        {/* Scrollable Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '15px' }}>
-          {/* Order Summary */}
-          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '15px', marginBottom: '15px' }}>
-            <h3 style={{ marginBottom: '15px' }}>🛍️ Order Summary</h3>
-            {cart.slice(0, 3).map((item, idx) => (
-              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                <span style={{ flex: 2 }}>{item.name}</span>
-                <span style={{ margin: '0 10px' }}>x{item.quantity || 1}</span>
-                <span>₹{parseFloat(item.price) * (item.quantity || 1)}</span>
-              </div>
-            ))}
-            {cart.length > 3 && <div style={{ fontSize: '12px', color: '#999', marginTop: '5px' }}>+{cart.length - 3} more items</div>}
-            <hr style={{ marginVertical: '15px' }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <strong>Total Amount</strong>
-              <strong style={{ fontSize: '20px', color: '#4CAF50' }}>₹{getTotal()}</strong>
-            </div>
-          </div>
+        <ScrollView 
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={true}
+          nestedScrollEnabled={true}
+        >
+          <View style={{ padding: 10, paddingBottom: 20 }}>
+            
+            {/* Order Summary - Ultra Compact */}
+            <View style={{ backgroundColor: '#fff', padding: 10, borderRadius: 10, marginBottom: 8 }}>
+              <Text style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 8 }}>🛍️ Order ({cart.length})</Text>
+              
+              {cart.map((item, idx) => {
+                const price = parseFloat(item.price) || 0;
+                const qty = item.quantity || 1;
+                return (
+                  <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                    <Text style={{ fontSize: 12 }} numberOfLines={1}>{item.name} x{qty}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '500' }}>₹{(price * qty).toFixed(2)}</Text>
+                  </View>
+                );
+              })}
+              
+              <View style={{ height: 1, backgroundColor: '#f0f0f0', marginVertical: 8 }} />
+              
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 13, fontWeight: 'bold' }}>Total</Text>
+                <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#4CAF50' }}>₹{total.toFixed(2)}</Text>
+              </View>
+            </View>
 
-          {/* Shipping Information */}
-          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '15px', marginBottom: '15px' }}>
-            <h3 style={{ marginBottom: '15px' }}>📋 Shipping Information</h3>
-            <input 
-              type="text" 
-              placeholder="Full Name *" 
-              value={formData.name} 
-              onChange={(e) => setFormData({...formData, name: e.target.value})}
-              style={{ width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '10px', border: '1px solid #e0e0e0', fontSize: '15px' }}
-            />
-            <input 
-              type="email" 
-              placeholder="Email *" 
-              value={formData.email} 
-              onChange={(e) => setFormData({...formData, email: e.target.value})}
-              style={{ width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '10px', border: '1px solid #e0e0e0', fontSize: '15px' }}
-            />
-            <input 
-              type="tel" 
-              placeholder="Phone *" 
-              value={formData.phone} 
-              onChange={(e) => setFormData({...formData, phone: e.target.value})}
-              style={{ width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '10px', border: '1px solid #e0e0e0', fontSize: '15px' }}
-            />
-            <input 
-              type="text" 
-              placeholder="Address *" 
-              value={formData.address} 
-              onChange={(e) => setFormData({...formData, address: e.target.value})}
-              style={{ width: '100%', padding: '12px', marginBottom: '12px', borderRadius: '10px', border: '1px solid #e0e0e0', fontSize: '15px' }}
-            />
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <input 
-                type="text" 
-                placeholder="City" 
-                value={formData.city} 
-                onChange={(e) => setFormData({...formData, city: e.target.value})}
-                style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '1px solid #e0e0e0', fontSize: '15px' }}
-              />
-              <input 
-                type="text" 
-                placeholder="Pincode" 
-                value={formData.pincode} 
-                onChange={(e) => setFormData({...formData, pincode: e.target.value})}
-                style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '1px solid #e0e0e0', fontSize: '15px' }}
-              />
-            </div>
-          </div>
+            {/* Shipping Form - Compact with Rows */}
+            <View style={{ backgroundColor: '#fff', padding: 10, borderRadius: 10, marginBottom: 8 }}>
+              <Text style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 8 }}>📋 Shipping</Text>
+              
+              {/* Row 1: Name + Email */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f5f5f5', borderRadius: 8, paddingHorizontal: 10 }}>
+                  <Ionicons name="person-outline" size={16} color="#999" />
+                  <TextInput 
+                    style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 6, fontSize: 13 }}
+                    placeholder="Name *" 
+                    value={formData.name} 
+                    onChangeText={t => setFormData({...formData, name: t})} 
+                  />
+                </View>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f5f5f5', borderRadius: 8, paddingHorizontal: 10 }}>
+                  <Ionicons name="mail-outline" size={16} color="#999" />
+                  <TextInput 
+                    style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 6, fontSize: 13 }}
+                    placeholder="Email *" 
+                    value={formData.email} 
+                    onChangeText={t => setFormData({...formData, email: t})} 
+                    keyboardType="email-address"
+                  />
+                </View>
+              </View>
 
-          {/* Payment Method */}
-          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '15px', marginBottom: '15px' }}>
-            <h3 style={{ marginBottom: '15px' }}>💳 Payment Method</h3>
-            {['COD', 'Credit Card', 'UPI'].map(method => (
-              <div key={method} style={{ display: 'flex', alignItems: 'center', padding: '10px 0', gap: '12px' }}>
-                <input 
-                  type="radio" 
-                  checked={formData.paymentMethod === method}
-                  onChange={() => setFormData({...formData, paymentMethod: method})}
-                  style={{ width: '20px', height: '20px' }}
-                />
-                <span>{method}</span>
-                {method === 'COD' && <span style={{ backgroundColor: '#4CAF50', color: 'white', padding: '4px 8px', borderRadius: '12px', fontSize: '10px', marginLeft: '10px' }}>Recommended</span>}
-              </div>
-            ))}
-          </div>
+              {/* Row 2: Phone + Address */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f5f5f5', borderRadius: 8, paddingHorizontal: 10 }}>
+                  <Ionicons name="call-outline" size={16} color="#999" />
+                  <TextInput 
+                    style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 6, fontSize: 13 }}
+                    placeholder="Phone *" 
+                    value={formData.phone} 
+                    onChangeText={t => setFormData({...formData, phone: t})} 
+                    keyboardType="phone-pad"
+                  />
+                </View>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f5f5f5', borderRadius: 8, paddingHorizontal: 10 }}>
+                  <Ionicons name="location-outline" size={16} color="#999" />
+                  <TextInput 
+                    style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 6, fontSize: 13 }}
+                    placeholder="Address *" 
+                    value={formData.address} 
+                    onChangeText={t => setFormData({...formData, address: t})} 
+                  />
+                </View>
+              </View>
 
-          {/* Delivery Information */}
-          <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '15px', marginBottom: '15px' }}>
-            <h3 style={{ marginBottom: '15px' }}>📦 Delivery Information</h3>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '15px', gap: '12px' }}>
-              <span style={{ fontSize: '24px' }}>⏰</span>
-              <div>
-                <div style={{ fontWeight: 'bold' }}>Estimated Delivery</div>
-                <div style={{ fontSize: '12px', color: '#666' }}>3-5 business days</div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '24px' }}>💵</span>
-              <div>
-                <div style={{ fontWeight: 'bold' }}>Cash on Delivery</div>
-                <div style={{ fontSize: '12px', color: '#666' }}>Available</div>
-              </div>
-            </div>
-          </div>
+              {/* Row 3: City + Pincode */}
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f5f5f5', borderRadius: 8, paddingHorizontal: 10 }}>
+                  <Ionicons name="business-outline" size={16} color="#999" />
+                  <TextInput 
+                    style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 6, fontSize: 13 }}
+                    placeholder="City" 
+                    value={formData.city} 
+                    onChangeText={t => setFormData({...formData, city: t})} 
+                  />
+                </View>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f5f5f5', borderRadius: 8, paddingHorizontal: 10 }}>
+                  <Ionicons name="mail-outline" size={16} color="#999" />
+                  <TextInput 
+                    style={{ flex: 1, paddingVertical: 8, paddingHorizontal: 6, fontSize: 13 }}
+                    placeholder="Pincode" 
+                    value={formData.pincode} 
+                    onChangeText={t => setFormData({...formData, pincode: t})} 
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+            </View>
 
-          {/* Place Order Button */}
-          <button 
-            onClick={handlePlaceOrder}
-            style={{ 
-              width: '100%', 
-              backgroundColor: '#4CAF50', 
-              color: 'white', 
-              padding: '15px', 
-              borderRadius: '12px', 
-              border: 'none', 
-              fontSize: '18px', 
-              fontWeight: 'bold', 
-              cursor: 'pointer',
-              marginBottom: '20px'
-            }}
-          >
-            Place Order • ₹{getTotal()}
-          </button>
-        </div>
-      </div>
+            {/* Payment Method - Compact Row */}
+            <View style={{ backgroundColor: '#fff', padding: 10, borderRadius: 10, marginBottom: 8 }}>
+              <Text style={{ fontSize: 14, fontWeight: 'bold', marginBottom: 6 }}>💳 Payment</Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                {['COD', 'Credit Card', 'UPI'].map(method => (
+                  <TouchableOpacity 
+                    key={method} 
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }} 
+                    onPress={() => setFormData({...formData, paymentMethod: method})}
+                  >
+                    <Ionicons 
+                      name={formData.paymentMethod === method ? 'radio-button-on' : 'radio-button-off'} 
+                      size={18} 
+                      color="#6200ee" 
+                    />
+                    <Text style={{ fontSize: 13, color: '#333' }}>{method}</Text>
+                    {method === 'COD' && (
+                      <View style={{ backgroundColor: '#4CAF50', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 8 }}>
+                        <Text style={{ color: '#fff', fontSize: 8, fontWeight: 'bold' }}>Save</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Place Order Button - Compact */}
+            <TouchableOpacity 
+              style={{ 
+                backgroundColor: loading ? '#ccc' : '#4CAF50', 
+                paddingVertical: 12, 
+                borderRadius: 10, 
+                alignItems: 'center', 
+                marginTop: 5
+              }} 
+              onPress={handlePlaceOrder} 
+              disabled={loading}
+            >
+              <Text style={{ color: '#fff', fontSize: 15, fontWeight: 'bold' }}>
+                {loading ? 'Placing...' : `Place Order • ₹${total.toFixed(2)}`}
+              </Text>
+            </TouchableOpacity>
+            
+          </View>
+        </ScrollView>
+
+        {/* Loading Overlay */}
+        {loading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.loadingOverlayText}>Processing...</Text>
+          </View>
+        )}
+      </View>
     );
   }
 
-  // FOR MOBILE/NATIVE ANDROID - Use React Native components
+  // FOR WEB - Keep your existing web code (unchanged)
   return (
-    <View style={{ flex: 1, backgroundColor: '#f8f8f8' }}>
-      <View style={{ 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        justifyContent: 'space-between', 
-        paddingHorizontal: 15, 
-        paddingTop: Platform.OS === 'ios' ? 50 : 15, 
-        paddingBottom: 15, 
-        backgroundColor: '#fff', 
-        borderBottomWidth: 1, 
-        borderBottomColor: '#f0f0f0' 
-      }}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#f0f0f0', justifyContent: 'center', alignItems: 'center' }}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#333', flex: 1, textAlign: 'center' }}>Checkout</Text>
-        <View style={{ width: 40 }} />
-      </View>
+    <div style={{ minHeight: '100vh', backgroundColor: '#f8f8f8', overflowY: 'auto' }}>
+  {/* Header - Ultra Compact */}
+  <div style={{ padding: '10px 12px', borderBottom: '1px solid #e0e0e0', backgroundColor: 'white', display: 'flex', alignItems: 'center', position: 'sticky', top: 0, zIndex: 100 }}>
+    <button onClick={() => navigation.goBack()} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', padding: '4px' }}>←</button>
+    <div style={{ fontSize: '16px', fontWeight: 'bold', flex: 1, textAlign: 'center' }}>Checkout</div>
+    <div style={{ width: 30 }}></div>
+  </div>
+  
+  <div style={{ padding: '10px', maxWidth: 500, margin: '0 auto' }}>
+    {/* Order Summary - Compact */}
+    <div style={{ backgroundColor: 'white', padding: '10px', borderRadius: 10, marginBottom: 8 }}>
+      <h3 style={{ fontSize: '14px', margin: '0 0 8px 0' }}>Order Summary ({cart.length})</h3>
+      {cart.map((item, idx) => {
+        const price = parseFloat(item.price) || 0;
+        const qty = item.quantity || 1;
+        return (
+          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, borderBottom: '1px solid #f0f0f0', paddingBottom: 5 }}>
+            <div>
+              <strong style={{ fontSize: '12px' }}>{item.name}</strong>
+              <div style={{ fontSize: '10px', color: '#666' }}>₹{price.toFixed(2)} × {qty}</div>
+            </div>
+            <div style={{ fontSize: '12px', fontWeight: '500' }}>₹{(price * qty).toFixed(2)}</div>
+          </div>
+        );
+      })}
+      <hr style={{ margin: '6px 0' }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+        <span style={{ fontSize: '12px' }}>Subtotal</span>
+        <span style={{ fontSize: '12px' }}>₹{subtotal.toFixed(2)}</span>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+        <span style={{ fontSize: '12px' }}>Shipping</span>
+        <span style={{ fontSize: '12px' }}>₹{shipping.toFixed(2)}</span>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTop: '1px solid #e0e0e0' }}>
+        <strong style={{ fontSize: '13px' }}>Total</strong>
+        <strong style={{ fontSize: '14px', color: '#4CAF50' }}>₹{total.toFixed(2)}</strong>
+      </div>
+    </div>
 
-      <ScrollView 
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 40 }}
-        showsVerticalScrollIndicator={true}
-      >
-        {/* Order Summary Card */}
-        <View style={styles.orderSummaryCard}>
-          <Text style={styles.orderSummaryTitle}>🛍️ Order Summary</Text>
-          {cart.slice(0, 3).map((item, idx) => (
-            <View key={idx} style={styles.orderItem}>
-              <Text style={styles.orderItemName} numberOfLines={1}>{item.name}</Text>
-              <Text style={styles.orderItemQty}>x{item.quantity || 1}</Text>
-              <Text style={styles.orderItemPrice}>₹{parseFloat(item.price) * (item.quantity || 1)}</Text>
-            </View>
-          ))}
-          {cart.length > 3 && (
-            <Text style={styles.moreItems}>+{cart.length - 3} more items</Text>
-          )}
-          <View style={styles.orderDivider} />
-          <View style={styles.orderTotalRow}>
-            <Text style={styles.orderTotalLabel}>Total Amount</Text>
-            <Text style={styles.orderTotalValue}>₹{getTotal()}</Text>
-          </View>
-        </View>
+    {/* Shipping Information - Compact with Rows */}
+    <div style={{ backgroundColor: 'white', padding: '10px', borderRadius: 10, marginBottom: 8 }}>
+      <h3 style={{ fontSize: '14px', margin: '0 0 8px 0' }}>Shipping</h3>
+      
+      {/* Row 1: Name + Email */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <input type="text" placeholder="Name *" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: 8, border: '1px solid #e0e0e0' }} />
+        <input type="email" placeholder="Email *" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: 8, border: '1px solid #e0e0e0' }} />
+      </div>
+      
+      {/* Row 2: Phone + Address */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <input type="tel" placeholder="Phone *" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: 8, border: '1px solid #e0e0e0' }} />
+        <input type="text" placeholder="Address *" value={formData.address} onChange={(e) => setFormData({...formData, address: e.target.value})} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: 8, border: '1px solid #e0e0e0' }} />
+      </div>
+      
+      {/* Row 3: City + Pincode */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input type="text" placeholder="City" value={formData.city} onChange={(e) => setFormData({...formData, city: e.target.value})} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: 8, border: '1px solid #e0e0e0' }} />
+        <input type="text" placeholder="Pincode" value={formData.pincode} onChange={(e) => setFormData({...formData, pincode: e.target.value})} style={{ flex: 1, padding: '8px', fontSize: '12px', borderRadius: 8, border: '1px solid #e0e0e0' }} />
+      </div>
+    </div>
 
-        <View style={styles.checkoutSection}>
-          <Text style={styles.checkoutTitle}>📋 Shipping Information</Text>
-          <View style={styles.inputWrapper}>
-            <Ionicons name="person-outline" size={20} color="#999" style={styles.inputIcon} />
-            <TextInput 
-              style={styles.checkoutInput} 
-              placeholder="Full Name *" 
-              value={formData.name} 
-              onChangeText={t => setFormData({...formData, name: t})} 
-              placeholderTextColor="#999"
-            />
-          </View>
-          <View style={styles.inputWrapper}>
-            <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
-            <TextInput 
-              style={styles.checkoutInput} 
-              placeholder="Email *" 
-              keyboardType="email-address" 
-              value={formData.email} 
-              onChangeText={t => setFormData({...formData, email: t})} 
-              placeholderTextColor="#999"
-            />
-          </View>
-          <View style={styles.inputWrapper}>
-            <Ionicons name="call-outline" size={20} color="#999" style={styles.inputIcon} />
-            <TextInput 
-              style={styles.checkoutInput} 
-              placeholder="Phone *" 
-              keyboardType="phone-pad" 
-              value={formData.phone} 
-              onChangeText={t => setFormData({...formData, phone: t})} 
-              placeholderTextColor="#999"
-            />
-          </View>
-          <View style={styles.inputWrapper}>
-            <Ionicons name="location-outline" size={20} color="#999" style={styles.inputIcon} />
-            <TextInput 
-              style={styles.checkoutInput} 
-              placeholder="Address *" 
-              value={formData.address} 
-              onChangeText={t => setFormData({...formData, address: t})} 
-              placeholderTextColor="#999"
-            />
-          </View>
-          <View style={styles.rowInputs}>
-            <View style={[styles.inputWrapper, { flex: 1, marginRight: 10 }]}>
-              <Ionicons name="business-outline" size={20} color="#999" style={styles.inputIcon} />
-              <TextInput 
-                style={styles.checkoutInput} 
-                placeholder="City" 
-                value={formData.city} 
-                onChangeText={t => setFormData({...formData, city: t})} 
-                placeholderTextColor="#999"
-              />
-            </View>
-            <View style={[styles.inputWrapper, { flex: 1 }]}>
-              <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
-              <TextInput 
-                style={styles.checkoutInput} 
-                placeholder="Pincode" 
-                keyboardType="numeric" 
-                value={formData.pincode} 
-                onChangeText={t => setFormData({...formData, pincode: t})} 
-                placeholderTextColor="#999"
-              />
-            </View>
-          </View>
-        </View>
+    {/* Payment Method - Compact Row */}
+    <div style={{ backgroundColor: 'white', padding: '10px', borderRadius: 10, marginBottom: 8 }}>
+      <h3 style={{ fontSize: '14px', margin: '0 0 6px 0' }}>Payment</h3>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        {['COD', 'Credit Card', 'UPI'].map(method => (
+          <label key={method} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px' }}>
+            <input type="radio" checked={formData.paymentMethod === method} onChange={() => setFormData({...formData, paymentMethod: method})} />
+            <span>{method}</span>
+            {method === 'COD' && <span style={{ backgroundColor: '#4CAF50', color: 'white', padding: '2px 6px', borderRadius: 8, fontSize: '9px' }}>Save</span>}
+          </label>
+        ))}
+      </div>
+    </div>
 
-        <View style={styles.checkoutSection}>
-          <Text style={styles.checkoutTitle}>💳 Payment Method</Text>
-          {['COD', 'Credit Card', 'UPI'].map(method => (
-            <TouchableOpacity 
-              key={method} 
-              style={styles.paymentOption} 
-              onPress={() => setFormData({...formData, paymentMethod: method})}
-            >
-              <Ionicons 
-                name={formData.paymentMethod === method ? 'radio-button-on' : 'radio-button-off'} 
-                size={24} 
-                color="#6200ee" 
-              />
-              <Text style={styles.paymentOptionText}>{method}</Text>
-              {method === 'COD' && (
-                <View style={styles.codBadge}>
-                  <Text style={styles.codBadgeText}>Recommended</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={styles.checkoutSection}>
-          <Text style={styles.checkoutTitle}>📦 Delivery Information</Text>
-          <View style={styles.deliveryInfo}>
-            <Ionicons name="time-outline" size={24} color="#4CAF50" />
-            <View style={styles.deliveryTextContainer}>
-              <Text style={styles.deliveryTitle}>Estimated Delivery</Text>
-              <Text style={styles.deliveryDate}>3-5 business days</Text>
-            </View>
-          </View>
-          <View style={styles.deliveryInfo}>
-            <Ionicons name="cash-outline" size={24} color="#4CAF50" />
-            <View style={styles.deliveryTextContainer}>
-              <Text style={styles.deliveryTitle}>Cash on Delivery</Text>
-              <Text style={styles.deliveryDate}>Available</Text>
-            </View>
-          </View>
-        </View>
-
-        <TouchableOpacity style={styles.placeOrderButton} onPress={handlePlaceOrder}>
-          <Text style={styles.placeOrderText}>Place Order • ₹{getTotal()}</Text>
-        </TouchableOpacity>
-        
-        <View style={styles.footerSpacer} />
-      </ScrollView>
-    </View>
+    {/* Place Order Button - Compact */}
+    <button onClick={handlePlaceOrder} disabled={loading} style={{ width: '100%', backgroundColor: loading ? '#ccc' : '#4CAF50', color: 'white', padding: '10px', borderRadius: 10, border: 'none', fontSize: '14px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+      {loading ? 'Placing...' : `Place Order • ₹${total.toFixed(2)}`}
+    </button>
+  </div>
+</div>
   );
-};
-
+};	
 // ========== PROFILE SCREEN ==========
 const ProfileScreen = () => {
   const { getTotal } = useContext(CartContext);
@@ -1009,6 +1022,7 @@ const ProfileScreen = () => {
 };
 
 // ========== CART PROVIDER ==========
+// ========== CART PROVIDER (FIXED) ==========
 const CartProvider = ({ children }) => {
   const [cart, setCart] = useState([]);
   
@@ -1016,21 +1030,59 @@ const CartProvider = ({ children }) => {
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
-        return prev.map(item => item.id === product.id ? { ...item, quantity: (item.quantity || 1) + (product.quantity || 1) } : item);
+        return prev.map(item => 
+          item.id === product.id 
+            ? { 
+                ...item, 
+                quantity: (item.quantity || 1) + (product.quantity || 1),
+                price: parseFloat(product.price) // Ensure price is number
+              } 
+            : item
+        );
       }
-      return [...prev, { ...product, quantity: product.quantity || 1 }];
+      return [...prev, { 
+        ...product, 
+        quantity: product.quantity || 1,
+        price: parseFloat(product.price) // Ensure price is number
+      }];
     });
   };
   
   const removeFromCart = (id) => setCart(prev => prev.filter(item => item.id !== id));
-  const updateQuantity = (id, quantity) => setCart(prev => prev.map(item => item.id === id ? { ...item, quantity: Math.max(1, quantity) } : item));
-  const getSubtotal = () => cart.reduce((sum, item) => sum + (parseFloat(item.price) * (item.quantity || 1)), 0);
+  
+  const updateQuantity = (id, quantity) => {
+    setCart(prev => prev.map(item => 
+      item.id === id 
+        ? { ...item, quantity: Math.max(1, quantity) } 
+        : item
+    ));
+  };
+  
+  const getSubtotal = () => {
+    return cart.reduce((sum, item) => {
+      const price = parseFloat(item.price) || 0;
+      const qty = item.quantity || 1;
+      return sum + (price * qty);
+    }, 0);
+  };
+  
   const getTotal = () => getSubtotal() + 50;
+  
   const getItemCount = () => cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
+  
   const clearCart = () => setCart([]);
   
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, getSubtotal, getTotal, getItemCount, clearCart }}>
+    <CartContext.Provider value={{ 
+      cart, 
+      addToCart, 
+      removeFromCart, 
+      updateQuantity, 
+      getSubtotal, 
+      getTotal, 
+      getItemCount, 
+      clearCart 
+    }}>
       {children}
     </CartContext.Provider>
   );
@@ -1511,4 +1563,20 @@ const styles = StyleSheet.create({
   footerSpacer: {
     height: 20,
   },
+loadingOverlay: {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0,0,0,0.7)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 1000,
+},
+loadingOverlayText: {
+  color: '#fff',
+  fontSize: 16,
+  marginTop: 15,
+},
 });
