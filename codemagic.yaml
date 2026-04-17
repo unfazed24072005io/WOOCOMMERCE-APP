@@ -1,13 +1,18 @@
 workflows:
-  apk:
-    name: Build APK
+  android-apk-direct:
+    name: Build APK Direct (No Expo)
     environment:
       node: 18
-      groups:
-        - expo_credentials
+      android_sdk: 33
     scripts:
-      - npm install
-      - npm install -g eas-cli
-      - eas build --platform android --profile preview --non-interactive --wait
+      - name: Install dependencies
+        script: npm install
+      
+      - name: Build APK directly
+        script: |
+          npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res/
+          cd android
+          ./gradlew assembleRelease
+      
     artifacts:
-      - "*.apk"
+      - "android/app/build/outputs/apk/release/*.apk"
